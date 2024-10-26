@@ -26,7 +26,7 @@ final class DownloadTask: NSObject, Sendable {
     private(set) var progress: Double = 0
     
     private lazy var backgroundSession: URLSession = {
-        let configuration = URLSessionConfiguration.background(withIdentifier: "com.picsee.downloadManager.session")
+        let configuration = URLSessionConfiguration.background(withIdentifier: "com.-SwiftUIPractice.SwiftUIPractice.downloadManager.session")
         configuration.isDiscretionary = true
         configuration.sessionSendsLaunchEvents = true
         return URLSession(configuration: configuration, delegate: self, delegateQueue: nil)

@@ -31,7 +31,7 @@ final class DownloadManager1: NSObject   {
     
     private var maxConcurrency: Int
     private var activeDownloads: [URL: DownloadTask] = [:]
-    private let downloadQueue = DispatchQueue(label: "com.picsee.downloadManager.queue", attributes: .concurrent)
+    private let downloadQueue = DispatchQueue(label: "com.-SwiftUIPractice.SwiftUIPractice.downloadManager.queue", attributes: .concurrent)
 
     override init() {
         self.maxConcurrency = 3

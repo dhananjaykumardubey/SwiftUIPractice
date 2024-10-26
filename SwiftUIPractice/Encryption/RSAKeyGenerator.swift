@@ -18,10 +18,10 @@ protocol RSAKeyManagerProtocol: Sendable {
 
 final class RSAKeyManager: RSAKeyManagerProtocol {
     
-    static let kRSAKeyApplicationTag = "com.picsee.keypair.access"
+    static let kRSAKeyApplicationTag = "com.-SwiftUIPractice.SwiftUIPractice.keypair.access"
     
     static let shared = RSAKeyManager()
-    private let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "com.mango.pixsee", category: "RSAKeyManager")
+    private let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "-SwiftUIPractice.SwiftUIPractice", category: "RSAKeyManager")
 
     private init() {}
 

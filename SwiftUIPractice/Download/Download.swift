@@ -51,7 +51,7 @@ class DownloadManager: NSObject, DownloadManagerProtocol {
     
     // Lazy background session to allow initialization after `self` is available
     private lazy var backgroundSession: URLSession = {
-        let configuration = URLSessionConfiguration.background(withIdentifier: "com.picsee.downloadManager.session")
+        let configuration = URLSessionConfiguration.background(withIdentifier: "com.-SwiftUIPractice.SwiftUIPractice.downloadManager.session")
         configuration.isDiscretionary = true
         configuration.sessionSendsLaunchEvents = true
         return URLSession(configuration: configuration, delegate: self, delegateQueue: nil)
