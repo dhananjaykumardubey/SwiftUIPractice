@@ -24,7 +24,7 @@ struct VerticalGridView: View {
 
 struct PhotoReviewView: View {
     @State private var selectedTab: String = "Photos without you"
-    @State private var newImage: String = "11"
+    @State private var newImage: String = "14"
     @ObservedObject var viewModel: PhotoGalleryViewModel
     
      var body: some View {
@@ -107,7 +107,7 @@ struct PhotoReviewView: View {
                                              Rectangle()
                                                  .fill(Color.gray.opacity(0.3))
                                                  .frame(width: 100, height: 100)
-                                             Image(systemName: "11")
+                                             Image(systemName: "14")
                                                  .resizable()
                                                  .scaledToFit()
                                                  .frame(width: 50, height: 50)
