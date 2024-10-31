@@ -58,7 +58,7 @@ public class ConnectionDownloadHelper {
         // location
         // clean the decrypted clean
         let filePath = FilePath(locationUrl.absoluteString)
-        let savedURL = try fileManagerService.handleDownloadedFile(location: locationUrl, downloadURL: downloadURL)
+        let savedURL = try fileManagerService.handleDownloadedFile(location: locationUrl, downloadURL: downloadURL, for: "dhan_123", saveBackupZip: true)
         return savedURL
     }
 }
@@ -69,12 +69,13 @@ extension ConnectionDownloadHelper: DownloadManagerDelegate1 {
     }
     
     func downloadManager(_ manager: DownloadManager1, didFinishDownloadingTo url: URL, to location: URL) {
-        do {
-            let savedURL = try self.handleFileDownload(locationUrl: location, downloadURL: url)
-            print("Downloaded successfully at \(savedURL) for download url: \(url)")
-        } catch {
-            print("Error handling downloaded file: \(error.localizedDescription)")
-        }
+            do {
+                let savedURL = try self.handleFileDownload(locationUrl: location, downloadURL: url)
+                print("Downloaded successfully at \(savedURL) for download url: \(url)")
+            } catch {
+                print("Error handling downloaded file: \(error.localizedDescription)")
+            }
+        
     }
     
     func downloadManager(_ manager: DownloadManager1, didFailWithError error: DownloadError, for url: URL) {

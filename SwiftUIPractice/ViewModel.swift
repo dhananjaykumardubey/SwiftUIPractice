@@ -92,6 +92,23 @@ class PhotoGalleryViewModel: ObservableObject {
     }
     
     func send() async {
+        do {
+            try await encrypt()
+        } catch {}
+//
+//        let urlString = "https://sample-videos.com/zip/50mb.zip" //
+//        let filesToDownload1 = FilesToDownload(connectionID: "Dhananjay", devicePhotoIDS: ["Dhananjay_50mb"], signedURL: urlString)
+//        let filesToDownload2 = FilesToDownload(connectionID: "Dhananjay", devicePhotoIDS: ["Dhananjay_20mb"], signedURL: "https://sample-videos.com/zip/20mb.zip")
+//        
+//        let filesToDownload3 = FilesToDownload(connectionID: "Dhananjay", devicePhotoIDS: ["Dhananjay_10mb"], signedURL: "https://sample-videos.com/zip/10mb.zip")
+//        
+//        let connectionHelper = ConnectionDownloadHelper()
+//        
+//        await connectionHelper.startDownloading(filesToDownload: [filesToDownload3])
+        
+    }
+    
+    func encrypt() async throws {
         
         guard let rsaDhananjaySender = RSAKeyManager.shared.generateRSAKey(for: "DH_123") else {
             print("Error: RSA Key generation failed - rsaDhananjaySender")
@@ -101,24 +118,19 @@ class PhotoGalleryViewModel: ObservableObject {
             print("Error: RSA Key generation failed - rsaGuruReceiver")
             return
         }
-        
         print("rsaDhananjaySender private key: \(rsaDhananjaySender.privateKey)")
         print("rsaDhananjaySender public key: \(rsaDhananjaySender.publicKey)")
         
         print("rsaGuruReceiver private key: \(rsaGuruReceiver.privateKey)")
         print("rsaGuruReceiver publickey key: \(rsaGuruReceiver.publicKey)")
-        
         let filePath = FileManager.default.urls(for: .documentDirectory,
                                                 in: .userDomainMask).first!
-            .appendingPathComponent("20mb.zip")
-            
+            .appendingPathComponent("10mb.zip")
         let outputFilePath = FileManager.default.urls(for: .documentDirectory,
                                                       in: .userDomainMask).first!
-        
         let outputDecryptedFilePath = FileManager.default.urls(for: .documentDirectory,
                                                       in: .userDomainMask).first!
             .appendingPathComponent("DecryptedData.zip")
-        
         let encryptedPath = FileManager.default.urls(for: .documentDirectory,
                                                 in: .userDomainMask).first!
             .appendingPathComponent("EncryptedData")
@@ -145,16 +157,5 @@ class PhotoGalleryViewModel: ObservableObject {
         }
         
        
-        
-//        let urlString = "https://sample-videos.com/zip/20mb.zip"//"https://sample-videos.com/zip/10mb.zip" //
-//        let filesToDownload1 = FilesToDownload(connectionID: "Dhananjay", devicePhotoIDS: ["Dhananjay_10mb"], signedURL: urlString)
-//        let connectionHelper = ConnectionDownloadHelper()
-//        
-//        do {
-//            try await connectionHelper.startDownloading(filesToDownload: [filesToDownload1])
-//        } catch {
-//            print("Error: \(error)")
-//        }
     }
-    
 }

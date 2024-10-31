@@ -8,7 +8,6 @@ import Foundation
 import Security
 import OSLog
 
-
 protocol RSAKeyManagerProtocol: Sendable {
     func fetchPublicKey(for connectionId: String) -> String?
     func fetchPrivateKey(for connectionId: String) -> String?

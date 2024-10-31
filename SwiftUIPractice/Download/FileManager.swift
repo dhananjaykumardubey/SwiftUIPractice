@@ -1,222 +1,164 @@
-//
-//  FileManager.swift
-//  SwiftUIPractice
-//
-//  Created by Dhananjay Dubey on 24/10/24.
-//
-
 import Foundation
-import SSZipArchive
+import AppleArchive
+import SSZipArchive // Assuming SSZipArchive is used for unzipping
 
-enum FileManagerError: Error {
+public enum FileManagerError: Error {
     case noDiskSpaceAvailable
     case failedToCreateDirectory
     case failedToMoveFile
+    case failedToCreateFilePath
     case failedToCopyFile
     case unzipFailed
+    case readFileStreamError
+    case decompressStreamError
+    case decodeStreamError
+    case extractStreamError
 }
 
-class FileManagerService {
-    static let shared = FileManagerService()
+public protocol FileManagerInterface {
+    func checkAvailableSpace() throws
+    func handleDownloadedFile(location: URL, downloadURL: URL, for connectionId: String, saveBackupZip: Bool) throws -> URL
+    func getDocumentsDirectoryString() -> String
+    func getConnectionDirectoryURL(for connectionId: String) -> URL
+    func getBackupDirectoryURL(for connectionId: String) -> URL
+    func copyFile(from location: URL, to destinationFolder: URL) throws -> URL
+    func moveFile(from location: URL, to destinationFolder: URL) throws -> URL
+}
+
+public final class FileManagerService: Sendable, FileManagerInterface {
     
+    static let shared = FileManagerService()
+    let metaDataManager = DownloadFileMetaDataManager()
     private let minimumRequiredSpace: Int64 = 100 * 1024 * 1024 // Minimum space required: 100MB
     
     private init() {}
     
-    func checkAvailableSpace() throws {
-        let availableSpace = try getAvailableDiskSpace()
-        guard availableSpace > minimumRequiredSpace else {
-            throw FileManagerError.noDiskSpaceAvailable
-        }
-    }
+    // MARK: - Public Methods
     
-    private func getAvailableDiskSpace() throws -> Int64 {
-        let attributes = try FileManager.default.attributesOfFileSystem(forPath: NSHomeDirectory())
-        let freeSpace = attributes[.systemFreeSize] as? Int64 ?? 0
-        return freeSpace
-    }
-    
-    func handleDownloadedFile(location: URL, downloadURL: URL) throws -> URL {
+    public func handleDownloadedFile(location: URL, downloadURL: URL, for connectionId: String, saveBackupZip: Bool) throws -> URL {
         guard FileManager.default.fileExists(atPath: location.path) else {
             throw FileManagerError.failedToMoveFile
         }
-//        guard let zipFileURL = try saveToDocumentsDirectory(copyFrom: location, with: downloadURL.lastPathComponent)
-//        else {
-//            throw FileManagerError.failedToMoveFile
-//        }
-        let zipFileURL = try moveFile(from: location, to: getConnectionDirectoryURL())
         
-        let photosDirectory = getConnectionDirectoryURL().appendingPathComponent("Photos")
+        // Set up main directories
+        let connectionDirectory = getConnectionDirectoryURL(for: connectionId)
+        let backupDirectory = getBackupDirectoryURL(for: connectionId)
+        let photosDirectory = connectionDirectory.appendingPathComponent("Photos")
+        
+        // Create necessary directories
+        try createDirectoryIfNeeded(at: backupDirectory)
         try createDirectoryIfNeeded(at: photosDirectory)
-        let unzippedPhotoURLs = try unzipFile(at: zipFileURL.path, to: photosDirectory.path)
-        print("unzippedPhotoURLs \(unzippedPhotoURLs)")
         
-        try saveZipAndPhotoMetadata(zipFileURL: zipFileURL, photos: unzippedPhotoURLs)
+        // Move the zip file to the backup folder
+        let zipFileURL = try moveFile(from: location, to: backupDirectory)
+        
+        // Unzip to a temporary folder
+        let tempUnzipDirectory = connectionDirectory.appendingPathComponent("TempUnzip")
+        try createDirectoryIfNeeded(at: tempUnzipDirectory)
+        do {
+            // Unzipping
+            let isSuccess = SSZipArchive.unzipFile(atPath: zipFileURL.path, toDestination: tempUnzipDirectory.path)
+            guard isSuccess else {
+                throw FileManagerError.unzipFailed
+            }
+            
+            // Move unzipped files to Photos folder
+            let unzippedFiles = try FileManager.default.contentsOfDirectory(at: tempUnzipDirectory, includingPropertiesForKeys: nil)
+            var unzippedPhotoURLs: [URL] = []
+            for file in unzippedFiles {
+                let destinationURL = photosDirectory.appendingPathComponent(file.lastPathComponent)
+                unzippedPhotoURLs.append(destinationURL)
+                try FileManager.default.moveItem(at: file, to: destinationURL)
+            }
+            
+            // Clean up: delete the temporary unzip directory
+            try FileManager.default.removeItem(at: tempUnzipDirectory)
+            
+            // Optionally delete the zip file from backup
+            if !saveBackupZip {
+                try FileManager.default.removeItem(at: zipFileURL)
+            }
+            
+            try DownloadFileMetaDataManager.saveZipAndPhotoMetadata(
+                zipFileURL: saveBackupZip ? zipFileURL : nil,
+                photos: unzippedPhotoURLs,
+                for: connectionId
+            )
+        } catch {
+            throw error
+        }
+        
         return zipFileURL
     }
     
-    
-    private func saveZipAndPhotoMetadata(zipFileURL: URL, photos: [URL]) throws {
-        let zipMetadata = ZipFileMetadata(fileName: zipFileURL.lastPathComponent,
-                                          downloadDate: Date(),
-                                          zipId: UUID(),
-                                          filePath: zipFileURL)
-        
-        let photoMetadata = photos.map {
-            return PhotoMetadata(id: UUID(),
-                                 fileName: $0.lastPathComponent,
-                                 downloadDate: Date(),
-                                 zipId: zipMetadata.zipId,
-                                 filePath: $0)
-        }
-        
-        try saveToSwiftData(zipMetadata: zipMetadata, photoMetadata: photoMetadata)
+    public func getDocumentsDirectoryString() -> String {
+        return getDocumentsDirectory().path
     }
     
-    private func saveToSwiftData(zipMetadata: ZipFileMetadata, photoMetadata: [PhotoMetadata]) throws {
-        // Implement SwiftData saving logic
-        print("zipMetadata -- \(zipMetadata)")
-        print("photoMetadata -- \(photoMetadata)")
-        // Add actual saving logic here
+    public func getConnectionDirectoryURL(for connectionId: String) -> URL {
+        let connectionDirectory = getDocumentsDirectory().appendingPathComponent("PicSee/Connections/\(connectionId)")
+        checkAndCreateDirectory(at: connectionDirectory.path)
+        return connectionDirectory
     }
     
-    func createDirectoryIfNeeded(at url: URL) throws {
-        if !FileManager.default.fileExists(atPath: url.path) {
-            do {
-                try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
-            } catch {
-                print("Failed to create directory: \(error.localizedDescription)")
-                throw FileManagerError.failedToCreateDirectory
-            }
-        }
-    }
-
-    func createDirectory(for fileName: String) throws -> URL {
-        guard let documentsDirectory = FileManager.default.urls(
-            for: .documentDirectory,
-            in: .userDomainMask
-        ).first?
-        .appendingPathComponent(fileName) else {
-            throw FileManagerError.failedToCreateDirectory
-        }
-        
-        do {
-            try FileManager.default.createDirectory(at: documentsDirectory, withIntermediateDirectories: true)
-        } catch {
-            print("Failed to create directory: \(error.localizedDescription)")
-            throw FileManagerError.failedToCreateDirectory
-        }
-        
-        return documentsDirectory
+    public func getBackupDirectoryURL(for connectionId: String) -> URL {
+        return getConnectionDirectoryURL(for: connectionId).appendingPathComponent("Backup")
     }
     
-    func moveFile(from location: URL, to destinationFolder: URL) throws -> URL {
+    public func moveFile(from location: URL, to destinationFolder: URL) throws -> URL {
         let destinationURL = destinationFolder.appendingPathComponent(location.lastPathComponent)
-        
+        try createDirectoryIfNeeded(at: destinationFolder)
         do {
-            try checkAvailableSpace() // Ensure there's space before moving the file
+            try checkAvailableSpace()
             try FileManager.default.moveItem(at: location, to: destinationURL)
         } catch {
-            print("Error moving file: \(error.localizedDescription)")
             throw FileManagerError.failedToMoveFile
         }
         
         return destinationURL
     }
     
-    func copyFile(from location: URL, to destinationFolder: URL) throws -> URL {
+    public func copyFile(from location: URL, to destinationFolder: URL) throws -> URL {
         let destinationURL = destinationFolder.appendingPathComponent(location.lastPathComponent)
-        
+        try createDirectoryIfNeeded(at: destinationURL)
         do {
-            try checkAvailableSpace() // Ensure there's space before moving the file
+            try checkAvailableSpace()
             try FileManager.default.copyItem(at: location, to: destinationURL)
         } catch {
-            print("Error moving file: \(error.localizedDescription)")
             throw FileManagerError.failedToCopyFile
         }
         
         return destinationURL
     }
     
-    
-    func unzipFile(at fileURL: String, to destinationFolder: String) throws -> [URL] {
-        let success = SSZipArchive.unzipFile(atPath: fileURL, toDestination: destinationFolder)
-        guard success else {
-            throw FileManagerError.unzipFailed
-        }
-        
-        // List all files in destination folder and return URLs
-        let unzippedFiles = try FileManager.default.contentsOfDirectory(atPath: destinationFolder)
-        return unzippedFiles.map { URL(fileURLWithPath: destinationFolder).appendingPathComponent($0) }
-    }
-    
-    // Read a file from a specified URL
-    func readFile(at url: URL) throws -> Data {
-        return try Data(contentsOf: url)
-    }
-}
-
-
-extension FileManagerService {
-
-    func connectionAssetDirectory() -> String {
-        let directory = getDocumentsDirectoryString() + "/Connection"
-        checkAndCreateDirectory(at: directory)
-        return directory
-    }
-
-    func checkAndCreateDirectory(at path: String) {
-        var isDirectory: ObjCBool = false
-        let exists = FileManager.default.fileExists(atPath: path, isDirectory: &isDirectory)
-        if !exists || !isDirectory.boolValue {
-            try? FileManager.default.createDirectory(atPath: path, withIntermediateDirectories: true, attributes: nil)
+    public func checkAvailableSpace() throws {
+        let attributes = try FileManager.default.attributesOfFileSystem(forPath: NSHomeDirectory())
+        let freeSpace = attributes[.systemFreeSize] as? Int64 ?? 0
+        guard freeSpace > minimumRequiredSpace else {
+            throw FileManagerError.noDiskSpaceAvailable
         }
     }
-
-     func getDocumentsDirectoryString() -> String {
-        func defaultGetDocumentsDirectoryString() -> String {
-            let paths = NSSearchPathForDirectoriesInDomains(.documentDirectory, .userDomainMask, true)
-            return paths[0]
-        }
-        
-        return defaultGetDocumentsDirectoryString()
-    }
-
-    func getConnectionDirectoryURL() -> URL {
-        URL(fileURLWithPath: connectionAssetDirectory())
+    
+    // MARK: - Private Helper Methods
+    
+    private func getDocumentsDirectory() -> URL {
+        return FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
     }
     
-    func getBackupDirectoryURL() -> URL {
-        URL(fileURLWithPath: connectionAssetDirectory()).appendingPathComponent("Backup")
-    }
-
-    func saveToDocumentsDirectory(copyFrom sourceURL: URL, with fileName: String) throws -> URL? {
-        let fileManager = FileManager.default
-        if fileManager.fileExists(atPath: sourceURL.relativePath) {
-            let documentsDirectory = getBackupDirectoryURL().path
-            let uniquePrefix: String = {
-                let date = Date()
-                return String(describing: date.timeIntervalSince1970)
-            }()
-            let pathToWrite = "\(documentsDirectory)/\(uniquePrefix)\(fileName)"
-
+    private func createDirectoryIfNeeded(at url: URL) throws {
+        if !FileManager.default.fileExists(atPath: url.path) {
             do {
-                let dd = try self.moveFile(from: sourceURL, to: URL(filePath: pathToWrite))
-//                try fileManager.copyItem(atPath: sourceURL.relativePath, toPath: pathToWrite)
-                if fileManager.fileExists(atPath: pathToWrite) {
-                    let fileURL = URL(fileURLWithPath: pathToWrite)
-                    try? fileManager.removeItem(at: sourceURL)
-                    return fileURL
-                } else {
-                    return nil
-                }
+                try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
             } catch {
-                print("Error: \(error.localizedDescription)")
-                throw error
+                throw FileManagerError.failedToCreateDirectory
             }
-        } else {
-            print("saveToDocumentsDirectory: File Does not exist")
-            return nil
+        }
+    }
+    
+    private func checkAndCreateDirectory(at path: String) {
+        var isDirectory: ObjCBool = false
+        if !FileManager.default.fileExists(atPath: path, isDirectory: &isDirectory) || !isDirectory.boolValue {
+            try? FileManager.default.createDirectory(atPath: path, withIntermediateDirectories: true, attributes: nil)
         }
     }
 }

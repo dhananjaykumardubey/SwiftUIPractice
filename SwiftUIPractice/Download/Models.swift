@@ -6,26 +6,40 @@
 //
 
 import Foundation
+import SwiftData
 
-// Metadata for the downloaded zip file
-struct ZipFileMetadata: Decodable {
-    let fileName: String
-    let downloadDate: Date
-    let zipId: UUID
-    let filePath: URL
+@Model
+public final class ZipFileMetadata: Sendable {
+    @Attribute(.unique) var fileName: String
+    var downloadDate: Date
+    var filePath: URL
+    var connectionId: String
+    
+    init(fileName: String, downloadDate: Date, filePath: URL, connectionId: String) {
+        self.fileName = fileName
+        self.downloadDate = downloadDate
+        self.filePath = filePath
+        self.connectionId = connectionId
+    }
 }
 
-// Metadata for individual photo files
-struct PhotoMetadata: Decodable {
-    let id: UUID
-    let fileName: String
-    let downloadDate: Date
-    let zipId: UUID
-    let filePath: URL
+@Model
+public final class PhotoMetadata: Sendable {
+    @Attribute(.unique) var fileName: String
+    var downloadDate: Date
+    var filePath: URL
+    var connectionId: String
+    
+    init(connectionId: String, fileName: String, downloadDate: Date, filePath: URL) {
+        self.connectionId = connectionId
+        self.fileName = fileName
+        self.downloadDate = downloadDate
+        self.filePath = filePath
+    }
 }
 
 // Overall file metadata that relates zip and photo metadata
-struct FileMetadata: Decodable {
+struct FileMetadata {
     let id: UUID
     let assetId: String
     let zipFilePath: URL

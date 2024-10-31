@@ -15,7 +15,7 @@ struct CryptoMetadata {
     let tag: Data
 }
 
-actor EncryptionService {
+public struct EncryptionService {
     
     func encryptFile(
         atPath filePath: URL,

@@ -103,44 +103,44 @@ class DownloadManager: NSObject, DownloadManagerProtocol {
     
     // MARK: - File Handling After Download Completion
     private func handleFileDownload(locationUrl: URL, downloadURL: URL) throws -> URL {
-        let savedURL = try fileManagerService.handleDownloadedFile(location: locationUrl, downloadURL: downloadURL)
+        let savedURL = try fileManagerService.handleDownloadedFile(location: locationUrl, downloadURL: downloadURL, for: "dhan_123", saveBackupZip: true)
         return savedURL
     }
     
-    private func unzipAndSaveMetadata(zipFileURL: URL) async throws {
-        let folderURL = zipFileURL.deletingLastPathComponent()
-        let photos = try fileManagerService.unzipFile(at: zipFileURL.absoluteString, to: folderURL.absoluteString)
-        try await saveMetadata(zipFileURL: zipFileURL, photos: photos)
-    }
+//    private func unzipAndSaveMetadata(zipFileURL: URL) async throws {
+//        let folderURL = zipFileURL.deletingLastPathComponent()
+//        let photos = try fileManagerService.unzipFile(at: zipFileURL.absoluteString, to: folderURL.absoluteString)
+//        try await saveMetadata(zipFileURL: zipFileURL, photos: photos)
+//    }
     
-    private func saveMetadata(zipFileURL: URL, photos: [URL]) async throws {
-        var photoMetadata = [PhotoMetadata]()
-
-        let downloadDate = Date()                // Record the current date as the download date
-        let zipId = UUID().uuidString            // Generate a unique identifier for the zip file
-
-        for photo in photos {
-            let attributes = try FileManager.default.attributesOfItem(atPath: photo.path)
-            let fileSize = attributes[.size] as? Int64 ?? 0
-            let fileName = photo.lastPathComponent // Get the file name from the URL
-
-            let metadata = PhotoMetadata(id: UUID(),
-                                         fileName: fileName,
-                                         downloadDate: downloadDate,
-                                         zipId: UUID(),
-                                         filePath: photo)
-            
-            photoMetadata.append(metadata)
-        }
-
-        let fileMetadata = FileMetadata(id: UUID(),
-                                        assetId: zipId,
-                                        zipFilePath: zipFileURL,
-                                        photos: photoMetadata,
-                                        dateDownloaded: downloadDate)
-        
-        try await SwiftDataManager.shared.save(fileMetadata)
-    }
+//    private func saveMetadata(zipFileURL: URL, photos: [URL]) async throws {
+//        var photoMetadata = [PhotoMetadata]()
+//
+//        let downloadDate = Date()                // Record the current date as the download date
+//        let zipId = UUID().uuidString            // Generate a unique identifier for the zip file
+//
+//        for photo in photos {
+//            let attributes = try FileManager.default.attributesOfItem(atPath: photo.path)
+//            let fileSize = attributes[.size] as? Int64 ?? 0
+//            let fileName = photo.lastPathComponent // Get the file name from the URL
+//
+//            let metadata = PhotoMetadata(id: UUID(),
+//                                         fileName: fileName,
+//                                         downloadDate: downloadDate,
+//                                         zipId: UUID(),
+//                                         filePath: photo)
+//            
+//            photoMetadata.append(metadata)
+//        }
+//
+//        let fileMetadata = FileMetadata(id: UUID(),
+//                                        assetId: zipId,
+//                                        zipFilePath: zipFileURL,
+//                                        photos: photoMetadata,
+//                                        dateDownloaded: downloadDate)
+//        
+//        try await SwiftDataManager.shared.save(fileMetadata)
+//    }
 
 }
 
