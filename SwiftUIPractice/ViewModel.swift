@@ -7,6 +7,7 @@
 
 import SwiftUI
 import Photos
+import SwiftData
 
 struct Item: Identifiable {
     let id: Int
@@ -36,11 +37,15 @@ class PhotoGalleryViewModel: ObservableObject {
     private var currentPage: Int = 0
     private let pageSize: Int = 20
     private var allAssets: [PHAsset] = []
-    
+    var connectionHelper: ConnectionDownloadHelper?
     // Initialize with PHAssets
-    init(assets: [PHAsset]) {
+    var modelContainer: ModelContainer?
+
+    init(assets: [PHAsset], modelContainer: ModelContainer) {
         self.allAssets = assets
-        fetchImages()
+        self.fetchImages()
+        self.modelContainer = modelContainer
+        self.connectionHelper = ConnectionDownloadHelper(modelContainer: modelContainer)
     }
     
     func fetchImages() {
@@ -71,6 +76,39 @@ class PhotoGalleryViewModel: ObservableObject {
         }
     }
     
+    
+    func databaseData() {
+        Task {
+            let filenames = [
+                "big_buck_bunny_240p_20mb.mp4",
+                "big_buck_bunny_240p_50mb.mp4",
+                "big_buck_bunny_240p_10mb.mp4"
+            ]
+            
+            let predicate = #Predicate<PhotoMetadata> { data in
+                filenames.contains(data.fileName)
+            }
+            guard let modelContainer = modelContainer else { return }
+            let dab = DownloadFileMetaDataManager(modelContainer: modelContainer)
+            do {
+                let ddd = try await dab.fetchPhotosLocations(for: predicate)
+                //            let sortDescriptor = SortDescriptor<PhotoMetadata>(\.fileName, order: .forward)
+                //
+                //            let descriptor = FetchDescriptor(predicate: predicate, sortBy: [sortDescriptor])
+                //            let ddd = try context.fetch(descriptor)
+                //            print(ddd)
+                for dd in ddd {
+                    print(dd.downloadDate)
+                    print(dd.fileName)
+                    print(dd.filePath)
+                }
+            } catch {
+                print(error)
+            }
+        }
+        
+    }
+    
     private func fetchImage(for asset: PHAsset, completion: @escaping (UIImage?) -> Void) {
         let imageManager = PHImageManager.default()
         let requestOptions = PHImageRequestOptions()
@@ -92,19 +130,27 @@ class PhotoGalleryViewModel: ObservableObject {
     }
     
     func send() async {
-        do {
-            try await encrypt()
-        } catch {}
+//        do {
+//            try await encrypt()
+//        } catch {}
 //
-//        let urlString = "https://sample-videos.com/zip/50mb.zip" //
-//        let filesToDownload1 = FilesToDownload(connectionID: "Dhananjay", devicePhotoIDS: ["Dhananjay_50mb"], signedURL: urlString)
-//        let filesToDownload2 = FilesToDownload(connectionID: "Dhananjay", devicePhotoIDS: ["Dhananjay_20mb"], signedURL: "https://sample-videos.com/zip/20mb.zip")
-//        
-//        let filesToDownload3 = FilesToDownload(connectionID: "Dhananjay", devicePhotoIDS: ["Dhananjay_10mb"], signedURL: "https://sample-videos.com/zip/10mb.zip")
-//        
+        let urlString = "https://sample-videos.com/zip/50mb.zip" //
+        let filesToDownload1 = FilesToDownload(connectionID: "Dhananjay", devicePhotoIDS: ["Dhananjay_50mb"], signedURL: urlString)
+        
+        let filesToDownload2 = FilesToDownload(connectionID: "Dhananjay", devicePhotoIDS: ["Dhananjay_20mb"], signedURL: "https://sample-videos.com/zip/20mb.zip")
+        
+        let filesToDownload3 = FilesToDownload(connectionID: "Dhananjay", devicePhotoIDS: ["Dhananjay_10mb"], signedURL: "https://sample-videos.com/zip/10mb.zip")
+        
+        let filesToDownload4 = FilesToDownload(connectionID: "Dhananjay", devicePhotoIDS: ["Dhananjay_30mb"], signedURL: "https://sample-videos.com/zip/30mb.zip")
+        
+        let filesToDownload5 = FilesToDownload(connectionID: "Dhananjay", devicePhotoIDS: ["Dhananjay_30mb"], signedURL: "https://sample-videos.com/zip/30mb.zip")
+        
+        let filesToDownload6 = FilesToDownload(connectionID: "Dhananjay", devicePhotoIDS: ["Dhananjay_100mb"], signedURL: "https://sample-videos.com/zip/100mb.zip")
+        
+        // filemanger -> Metat -> App()
 //        let connectionHelper = ConnectionDownloadHelper()
-//        
-//        await connectionHelper.startDownloading(filesToDownload: [filesToDownload3])
+        
+        connectionHelper?.startDownloading(filesToDownload: [filesToDownload3, filesToDownload2, filesToDownload1, filesToDownload4, filesToDownload6])
         
     }
     
@@ -137,21 +183,21 @@ class PhotoGalleryViewModel: ObservableObject {
         
         let encryptor = EncryptionService()
         do {
-            let encryptedData = try await encryptor.encryptFile(atPath: filePath,
-                                                                outputPath: outputFilePath,
-                                                                senderPrivateKey: rsaDhananjaySender.privateKey,
-                                                                recipientPublicKey: rsaGuruReceiver.publicKey)
+            let encryptedData = try encryptor.encryptFile(atPath: filePath,
+                                                          outputPath: outputFilePath,
+                                                          senderPrivateKey: rsaDhananjaySender.privateKey,
+                                                          recipientPublicKey: rsaGuruReceiver.publicKey)
             
             try await Task.sleep(nanoseconds: 5_000_000_000)
             
-            try await encryptor.decryptFile(fromPath: encryptedPath,
-                                            metadata: encryptedData.metadata,
-                                            recipientPrivateKey: rsaGuruReceiver.privateKey,
-                                            senderPublicKey: rsaDhananjaySender.publicKey,
-                                            outputPath: outputDecryptedFilePath)
+            try encryptor.decryptFile(fromPath: encryptedPath,
+                                      metadata: encryptedData.metadata,
+                                      recipientPrivateKey: rsaGuruReceiver.privateKey,
+                                      senderPublicKey: rsaDhananjaySender.publicKey,
+                                      outputPath: outputDecryptedFilePath)
             
             print("Decrypted data successfully:")
-
+            
         } catch {
             print("Error: \(error)")
         }

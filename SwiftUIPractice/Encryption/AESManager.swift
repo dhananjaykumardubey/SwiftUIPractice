@@ -9,7 +9,7 @@ import Foundation
 import CryptoKit
 
 struct AESManager {
-    static func encrypt(data: Data, using key: SymmetricKey, nonce: AES.GCM.Nonce) async throws -> (sealedBox: AES.GCM.SealedBox, nonce: Data) {
+    static func encrypt(data: Data, using key: SymmetricKey, nonce: AES.GCM.Nonce) throws -> (sealedBox: AES.GCM.SealedBox, nonce: Data) {
         do {
             let sealedBox = try AES.GCM.seal(data, using: key, nonce: nonce, authenticating: Data())
             return (sealedBox, Data(nonce))
@@ -18,7 +18,7 @@ struct AESManager {
         }
     }
     
-    static func decrypt(ciphertext: Data, nonce: Data, using key: SymmetricKey, tag: Data) async throws -> Data {
+    static func decrypt(ciphertext: Data, nonce: Data, using key: SymmetricKey, tag: Data) throws -> Data {
         guard let nonce = try? AES.GCM.Nonce(data: nonce) else {
             throw CryptoError.decryptionFailed
         }

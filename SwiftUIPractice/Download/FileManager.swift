@@ -16,45 +16,48 @@ public enum FileManagerError: Error {
 }
 
 public protocol FileManagerInterface {
-    func checkAvailableSpace() throws
-    func handleDownloadedFile(location: URL, downloadURL: URL, for connectionId: String, saveBackupZip: Bool) throws -> URL
-    func getDocumentsDirectoryString() -> String
-    func getConnectionDirectoryURL(for connectionId: String) -> URL
-    func getBackupDirectoryURL(for connectionId: String) -> URL
-    func copyFile(from location: URL, to destinationFolder: URL) throws -> URL
-    func moveFile(from location: URL, to destinationFolder: URL) throws -> URL
+    func checkAvailableSpace() async throws
+    func handleDownloadedFile(location: URL, for connectionId: String, saveBackupZip: Bool) async throws -> (ZipFileMetadata?, [PhotoMetadata])?
+    func getDocumentsDirectoryString() async throws-> String
+    func getDocumentsDirectory() async -> URL
+    func getConnectionDirectoryURL(for connectionId: String) async throws -> URL
+    func getBackupDirectoryURL(for connectionId: String) async throws -> URL
+    func copyFile(from location: URL, to destinationFolder: URL) async throws -> URL
+    func moveFile(from location: URL, to destinationFolder: URL) async throws -> URL
 }
 
-public final class FileManagerService: Sendable, FileManagerInterface {
-    
+public actor FileManagerService: Sendable, FileManagerInterface {
+
     static let shared = FileManagerService()
-    let metaDataManager = DownloadFileMetaDataManager()
     private let minimumRequiredSpace: Int64 = 100 * 1024 * 1024 // Minimum space required: 100MB
     
+    /// A cache to store directory paths that have already been checked or created.
+     private var directoryCache: Set<String> = []
+
     private init() {}
     
     // MARK: - Public Methods
     
-    public func handleDownloadedFile(location: URL, downloadURL: URL, for connectionId: String, saveBackupZip: Bool) throws -> URL {
+    public func handleDownloadedFile(location: URL, for connectionId: String, saveBackupZip: Bool) async throws -> (ZipFileMetadata?, [PhotoMetadata])? {
         guard FileManager.default.fileExists(atPath: location.path) else {
             throw FileManagerError.failedToMoveFile
         }
         
         // Set up main directories
-        let connectionDirectory = getConnectionDirectoryURL(for: connectionId)
-        let backupDirectory = getBackupDirectoryURL(for: connectionId)
+        let connectionDirectory = try getConnectionDirectoryURL(for: connectionId)
+        let backupDirectory = try getBackupDirectoryURL(for: connectionId)
         let photosDirectory = connectionDirectory.appendingPathComponent("Photos")
         
         // Create necessary directories
-        try createDirectoryIfNeeded(at: backupDirectory)
-        try createDirectoryIfNeeded(at: photosDirectory)
+        try await ensureDirectoryExists(at: backupDirectory)
+        try await ensureDirectoryExists(at: photosDirectory)
         
         // Move the zip file to the backup folder
-        let zipFileURL = try moveFile(from: location, to: backupDirectory)
+        let zipFileURL = try await moveFile(from: location, to: backupDirectory)
         
         // Unzip to a temporary folder
-        let tempUnzipDirectory = connectionDirectory.appendingPathComponent("TempUnzip")
-        try createDirectoryIfNeeded(at: tempUnzipDirectory)
+        let tempUnzipDirectory = connectionDirectory.appendingPathComponent("\(UUID().uuidString)")
+        try await ensureDirectoryExists(at: tempUnzipDirectory)
         do {
             // Unzipping
             let isSuccess = SSZipArchive.unzipFile(atPath: zipFileURL.path, toDestination: tempUnzipDirectory.path)
@@ -78,36 +81,34 @@ public final class FileManagerService: Sendable, FileManagerInterface {
             if !saveBackupZip {
                 try FileManager.default.removeItem(at: zipFileURL)
             }
-            
-            try DownloadFileMetaDataManager.saveZipAndPhotoMetadata(
-                zipFileURL: saveBackupZip ? zipFileURL : nil,
-                photos: unzippedPhotoURLs,
-                for: connectionId
-            )
+           
+            let metaData = try DownloadFileMetaDataManager.createZipAndPhotoMetadata(zipFileURL: zipFileURL,
+                                                                  photos: unzippedPhotoURLs,
+                                                                  for: connectionId)
         } catch {
             throw error
         }
         
-        return zipFileURL
+        return nil
     }
     
     public func getDocumentsDirectoryString() -> String {
         return getDocumentsDirectory().path
     }
     
-    public func getConnectionDirectoryURL(for connectionId: String) -> URL {
-        let connectionDirectory = getDocumentsDirectory().appendingPathComponent("PicSee/Connections/\(connectionId)")
-        checkAndCreateDirectory(at: connectionDirectory.path)
+    public func getConnectionDirectoryURL(for connectionId: String) throws -> URL {
+        let connectionDirectory = getDocumentsDirectory().appendingPathComponent("PicSee/\(connectionId)")
+        try checkAndCreateDirectory(at: connectionDirectory.path)
         return connectionDirectory
     }
     
-    public func getBackupDirectoryURL(for connectionId: String) -> URL {
-        return getConnectionDirectoryURL(for: connectionId).appendingPathComponent("Backup")
+    public func getBackupDirectoryURL(for connectionId: String) throws -> URL {
+        return try getConnectionDirectoryURL(for: connectionId).appendingPathComponent("Backup")
     }
     
-    public func moveFile(from location: URL, to destinationFolder: URL) throws -> URL {
+    public func moveFile(from location: URL, to destinationFolder: URL) async throws -> URL {
         let destinationURL = destinationFolder.appendingPathComponent(location.lastPathComponent)
-        try createDirectoryIfNeeded(at: destinationFolder)
+        try await ensureDirectoryExists(at: destinationFolder)
         do {
             try checkAvailableSpace()
             try FileManager.default.moveItem(at: location, to: destinationURL)
@@ -118,9 +119,9 @@ public final class FileManagerService: Sendable, FileManagerInterface {
         return destinationURL
     }
     
-    public func copyFile(from location: URL, to destinationFolder: URL) throws -> URL {
+    public func copyFile(from location: URL, to destinationFolder: URL) async throws -> URL {
         let destinationURL = destinationFolder.appendingPathComponent(location.lastPathComponent)
-        try createDirectoryIfNeeded(at: destinationURL)
+        try await ensureDirectoryExists(at: destinationURL)
         do {
             try checkAvailableSpace()
             try FileManager.default.copyItem(at: location, to: destinationURL)
@@ -141,24 +142,40 @@ public final class FileManagerService: Sendable, FileManagerInterface {
     
     // MARK: - Private Helper Methods
     
-    private func getDocumentsDirectory() -> URL {
+    public func getDocumentsDirectory() -> URL {
         return FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
     }
-    
-    private func createDirectoryIfNeeded(at url: URL) throws {
-        if !FileManager.default.fileExists(atPath: url.path) {
-            do {
-                try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
-            } catch {
-                throw FileManagerError.failedToCreateDirectory
-            }
-        }
-    }
-    
-    private func checkAndCreateDirectory(at path: String) {
+
+    @discardableResult
+    private func checkAndCreateDirectory(at path: String) throws -> Bool {
         var isDirectory: ObjCBool = false
         if !FileManager.default.fileExists(atPath: path, isDirectory: &isDirectory) || !isDirectory.boolValue {
-            try? FileManager.default.createDirectory(atPath: path, withIntermediateDirectories: true, attributes: nil)
+            try FileManager.default.createDirectory(atPath: path, withIntermediateDirectories: true, attributes: nil)
+            return true
+        }
+        return false
+    }
+    
+    private func isDirectoryCached(_ path: String) async -> Bool {
+        return directoryCache.contains(path)
+    }
+    
+    private func cacheDirectory(_ path: String) async {
+        directoryCache.insert(path)
+    }
+    
+    private func ensureDirectoryExists(at url: URL) async throws {
+        let path = url.path
+        if await isDirectoryCached(path) {
+            return
+        }
+        do {
+            let directoryCreated = try checkAndCreateDirectory(at: path)
+            if directoryCreated {
+                await cacheDirectory(path)
+            }
+        } catch {
+            throw FileManagerError.failedToCreateDirectory
         }
     }
 }

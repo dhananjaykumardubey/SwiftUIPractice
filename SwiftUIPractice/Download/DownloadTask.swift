@@ -7,51 +7,52 @@
 
 import Foundation
 
-protocol DownloadTaskDelegate: AnyObject, Sendable {
+protocol DownloadTaskDelegate: AnyObject {
     func downloadTask(_ task: DownloadTask, didUpdateProgress progress: Double)
     func downloadTask(_ task: DownloadTask, didFinishDownloadingTo location: URL)
     func downloadTask(_ task: DownloadTask, didFailWithError error: DownloadError)
     func downloadTaskDidCancel(_ task: DownloadTask)
     func downloadTaskDidResume(_ task: DownloadTask)
-    func downloadTaskDidSPause(_ task: DownloadTask)
-    func downloadTaskDidStart(_ task: DownloadTask)
+    func downloadTaskDidPause(_ task: DownloadTask)
+    func downloadTaskDidStart()
 }
 
-final class DownloadTask: NSObject, Sendable {
+final class DownloadTask: NSObject {
     let url: URL
-    let taskDelegate: DownloadTaskDelegate?
+    weak var taskDelegate: DownloadTaskDelegate?
     
-    private var task: URLSessionDownloadTask?
+    var task: URLSessionDownloadTask?
     private var resumeData: Data?
     private(set) var progress: Double = 0
     
     private lazy var backgroundSession: URLSession = {
-        let configuration = URLSessionConfiguration.background(withIdentifier: "com.-SwiftUIPractice.SwiftUIPractice.downloadManager.session")
+        let configuration = URLSessionConfiguration.background(withIdentifier: "com.-SwiftUIPractice.SwiftUIPractice.downloadManager.session.\(UUID().uuidString)")
         configuration.isDiscretionary = true
         configuration.sessionSendsLaunchEvents = true
         return URLSession(configuration: configuration, delegate: self, delegateQueue: nil)
     }()
     
-    init(url: URL, taskDelegate: DownloadTaskDelegate? = nil) {
-        self.taskDelegate = taskDelegate
+    init(url: URL) {
         self.url = url
         super.init()
-          // Logging to confirm delegate assignment
-          print("DownloadTask initialized. Delegate is set: \(self.taskDelegate != nil)")
+    }
+    
+    deinit {
+        print("Came here for DownloadTask - deinit")
     }
     
     func start() {
         task = backgroundSession.downloadTask(with: url)
         task?.priority = URLSessionTask.highPriority
         task?.resume()
-        self.taskDelegate?.downloadTaskDidStart(self)
+        self.taskDelegate?.downloadTaskDidStart()
     }
-    
+
     func pause() {
         task?.cancel(byProducingResumeData: { data in
             self.resumeData = data
             self.task = nil
-            self.taskDelegate?.downloadTaskDidSPause(self)
+            self.taskDelegate?.downloadTaskDidPause(self)
         })
     }
     
@@ -92,7 +93,7 @@ extension DownloadTask: URLSessionDownloadDelegate {
             try? fileManager.removeItem(at: destinationURL)
             try fileManager.copyItem(at: location, to: destinationURL)
             
-            print("Downloaded successfully at \(destinationURL) for download url: \(String(describing: downloadURL))")
+//            print("Downloaded successfully at \(destinationURL) for download url: \(String(describing: downloadURL))")
             self.taskDelegate?.downloadTask(self, didFinishDownloadingTo: destinationURL)
         } catch {
             print("Error processing downloaded file: \(error)")
@@ -101,7 +102,7 @@ extension DownloadTask: URLSessionDownloadDelegate {
     
     func urlSession(_ session: URLSession, downloadTask: URLSessionDownloadTask, didWriteData bytesWritten: Int64, totalBytesWritten: Int64, totalBytesExpectedToWrite: Int64) {
         progress = Double(totalBytesWritten) / Double(totalBytesExpectedToWrite)
-        print("PROGRESS - \(progress)")
+        print("DJ: PROGRESS - \(progress) for url: \(downloadTask.originalRequest?.url?.absoluteString ?? "")")
         taskDelegate?.downloadTask(self, didUpdateProgress: progress)
     }
     

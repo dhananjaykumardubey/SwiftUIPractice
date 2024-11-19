@@ -10,6 +10,7 @@ import Foundation
 enum CryptoError: Error {
     case fileNotFound
     case readError
+    case fileNotCreated
     case writeError
     case encryptionFailed
     case decryptionFailed
@@ -23,6 +24,7 @@ enum CryptoError: Error {
         switch self {
         case .fileNotFound: return "File not found at specified path."
         case .readError: return "Failed to read data from the file."
+            case .fileNotCreated: return "Failed to create a file at given path"
         case .writeError: return "Failed to write data to the file."
         case .encryptionFailed: return "Failed to encrypt data."
         case .decryptionFailed: return "Failed to decrypt data."

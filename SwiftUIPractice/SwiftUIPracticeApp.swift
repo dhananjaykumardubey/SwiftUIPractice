@@ -10,35 +10,29 @@ import SwiftData
 
 @main
 struct SwiftUIPracticeApp: App {
-    @StateObject private var storeConfig = StoreConfiguration()
+
+    let container: ModelContainer
+    init() {
+        do {
+            container = try ModelContainer(for: ZipFileMetadata.self, PhotoMetadata.self)
+        } catch {
+            fatalError("Failed to create container")
+        }
+    }
     
     var body: some Scene {
         WindowGroup {
-            if let container = storeConfig.modelContainer {
-                PhotoReviewView(viewModel: PhotoGalleryViewModel(assets: []))
-                    .modelContainer(container)
-                    .environmentObject(storeConfig)
-            } else {
-                ProgressView("Initializing...")
-                    .task {
-                        do {
-                            try await storeConfig.configure()
-                        } catch {
-                            print("Failed to configure SwiftData: \(error)")
-                        }
-                    }
-            }
-            
+            PhotoReviewView(viewModel: PhotoGalleryViewModel(assets: [], modelContainer: container))
+                .environment(\.modelContext, container.mainContext)
         }
     }
 }
 
-@MainActor
-final class StoreConfiguration: ObservableObject {
-    @Published private(set) var modelContainer: ModelContainer?
-    @Published private(set) var storeManager = StorageManager.shared    
-    func configure() async throws {
-        try await storeManager.configure(schema: Schema([ZipFileMetadata.self, PhotoMetadata.self]))
-        self.modelContainer = try storeManager.getModelContainer()
+extension View {
+    func withModelContainer() -> some View {
+        modelContainer(for: [
+          ZipFileMetadata.self,
+          PhotoMetadata.self,
+        ])
     }
 }

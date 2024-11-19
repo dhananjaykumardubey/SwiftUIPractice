@@ -24,13 +24,13 @@ struct VerticalGridView: View {
 
 
 struct PhotoReviewView: View {
-    @EnvironmentObject private var storeConfig: StoreConfiguration
+    @Environment(\.modelContext) private var context
     @Query(sort: \PhotoMetadata.fileName) private var photos: [PhotoMetadata]
     
     @State private var selectedTab: String = "Photos without you"
     @State private var newImage: String = "14"
     @ObservedObject var viewModel: PhotoGalleryViewModel
-    
+
      var body: some View {
          VStack(spacing: 16) {
              Text("Review 30 photos")
@@ -133,39 +133,11 @@ struct PhotoReviewView: View {
         }
         .padding(.horizontal)
         .onAppear {
-            databaseData()
-        }
-    }
-    
-    func databaseData() {
-        photos.forEach {
-            print($0.connectionId)
-        }
-        Task {
-            let filenames = [
-                   "big_buck_bunny_240p_20mb.mp4",
-                   "big_buck_bunny_240p_50mb.mp4",
-                   "big_buck_bunny_240p_10mb.mp4"
-               ]
-
-               let predicate = #Predicate<PhotoMetadata> { data in
-                   filenames.contains(data.fileName)
-               }
-
-            let sortDescriptor = SortDescriptor<PhotoMetadata>(\.fileName, order: .forward)
-            
-            let ddd = try await storeConfig.storeManager.fetchBatch(
-                predicate: predicate,
-                sortDescriptors: [sortDescriptor]
-            )
-            print(ddd)
-            for dd in ddd {
-                print(dd.downloadDate)
-                print(dd.fileName)
-                print(dd.filePath)
+            photos.forEach {
+                print($0.connectionId)
             }
+            viewModel.databaseData()
         }
-        
     }
 }
 

@@ -6,7 +6,7 @@
 //
 
 import Foundation
-
+/*
 enum DownloadManagerError: Error, LocalizedError {
     case downloadNotFound
     case failedToProduceResumeData
@@ -51,7 +51,7 @@ class DownloadManager: NSObject, DownloadManagerProtocol {
     
     // Lazy background session to allow initialization after `self` is available
     private lazy var backgroundSession: URLSession = {
-        let configuration = URLSessionConfiguration.background(withIdentifier: "com.-SwiftUIPractice.SwiftUIPractice.downloadManager.session")
+        let configuration = URLSessionConfiguration.background(withIdentifier: "com.-SwiftUIPractice.SwiftUIPractice.downloadManager.session.\(UUID().uuidString)")
         configuration.isDiscretionary = true
         configuration.sessionSendsLaunchEvents = true
         return URLSession(configuration: configuration, delegate: self, delegateQueue: nil)
@@ -63,7 +63,7 @@ class DownloadManager: NSObject, DownloadManagerProtocol {
 
     
     func downloadFiles(urls: [URL]) async throws {
-        let taskQueue = TaskQueue(maxConcurrentTasks: maxConcurrentDownloads)
+        let taskQueue = DownloadTaskQueue(maxConcurrentTasks: maxConcurrentDownloads)
         
         try await withThrowingTaskGroup(of: Void.self) { group in
             for url in urls {
@@ -87,7 +87,7 @@ class DownloadManager: NSObject, DownloadManagerProtocol {
     }
     
     private func downloadFile(from url: URL) async throws {
-        try fileManagerService.checkAvailableSpace()
+        try await fileManagerService.checkAvailableSpace()
         let downloadId = UUID()
         let task = backgroundSession.downloadTask(with: url)
         task.priority = 1.0
@@ -163,7 +163,7 @@ extension DownloadManager: URLSessionDownloadDelegate {
                 }
                 
                 // TODO: Send an event for download complete instantly
-                print("Downloaded successfully at \(location) for download url: \(downloadURL)")
+//                print("Downloaded successfully at \(location) for download url: \(downloadURL)")
                 let savedURL = try handleFileDownload(locationUrl: location, downloadURL: downloadURL)
 //                print("unzipped at \(savedURL)")
 //                let baseDirectory = try fileManagerService.createDirectory(for: "ConnectionID")
@@ -192,3 +192,4 @@ extension DownloadManager: URLSessionDownloadDelegate {
         // Add LOCAL NOtification later
     }
 }
+*/

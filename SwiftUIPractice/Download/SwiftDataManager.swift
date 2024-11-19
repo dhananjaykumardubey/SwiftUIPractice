@@ -43,7 +43,7 @@ enum StorageError: Error {
 
 //// MARK: - Protocol
 //@DatabaseActor
-public protocol StorageProtocol {
+public protocol StorageProtocol: ObservableObject {
     func save<T: PersistentModel>(_ item: T) async throws
     func update<T: PersistentModel>(_ item: T) async throws
     func delete<T: PersistentModel>(_ item: T) async throws
@@ -53,11 +53,11 @@ public protocol StorageProtocol {
 
 // MARK: - Storage Manager
 //@DatabaseActor
-public final class StorageManager: StorageProtocol, @unchecked Sendable {
+actor StorageManager: StorageProtocol, @unchecked Sendable {
     public static let shared = StorageManager()
 
 //    @DatabaseActor
-    private var modelContainer: ModelContainer?
+     private var modelContainer: ModelContainer?
     
 //    @DatabaseActor
     private var backgroundContext: ModelContext?
@@ -65,7 +65,8 @@ public final class StorageManager: StorageProtocol, @unchecked Sendable {
     private init() {}
 
 //    @DatabaseActor
-    public func configure(schema: Schema, isPreview: Bool = false) async throws {
+    
+    public func configure(schema: Schema, isPreview: Bool = false) throws {
         let modelConfiguration = ModelConfiguration(isStoredInMemoryOnly: isPreview)
         self.modelContainer = try ModelContainer(for: schema, configurations: [modelConfiguration])
         if let container = modelContainer {
@@ -74,9 +75,9 @@ public final class StorageManager: StorageProtocol, @unchecked Sendable {
     }
 
 //    @DatabaseActor
-    public func getModelContainer() throws -> ModelContainer {
+    public func getModelContainer() -> ModelContainer {
         guard let container = modelContainer else {
-            throw StorageError.modelContainerNotFound
+            fatalError("Could not create ModelContainer")
         }
         return container
     }
@@ -125,18 +126,26 @@ public final class StorageManager: StorageProtocol, @unchecked Sendable {
         let results = try context.fetch(descriptor)
         
         return results
-        
     }
 }
 
-final class DownloadFileMetaDataManager: Sendable {
+@ModelActor
+actor DownloadFileMetaDataManager: Sendable {
     
-    static func saveZipAndPhotoMetadata(zipFileURL: URL?,
-                                 photos: [URL],
-                                 for connectionId: String) throws {
-      
-        var zipMetaData: ZipFileMetadata?
+//    private var modelContext: ModelContext
+//    init(modelContext: ModelContext) {
+//        self.modelContext = modelContext
+//    }
+//    private var modelContext: ModelContext {
+//        modelExecutor.modelContext
+//    }
+    private var modelContext: ModelContext { modelExecutor.modelContext }
+
+    static func createZipAndPhotoMetadata(zipFileURL: URL?,
+                                          photos: [URL],
+                                          for connectionId: String) throws -> (ZipFileMetadata?, [PhotoMetadata])? {
         
+        var zipMetaData: ZipFileMetadata?
         if let zipFileURL = zipFileURL {
             zipMetaData = ZipFileMetadata(
                 fileName: zipFileURL.lastPathComponent,
@@ -144,46 +153,73 @@ final class DownloadFileMetaDataManager: Sendable {
                 filePath: zipFileURL,
                 connectionId: connectionId
             )
-
-            if let zipMetaData = zipMetaData {
-//                try await DatabaseActor.shared.performDatabaseTask {
-                    try StorageManager.shared.save(zipMetaData)
-//                }
-            }
-            
-//            let descriptor = FetchDescriptor<ZipFileMetadata>(
-//                predicate: zipExistsPredicate
-//            )
-//
-//            if try modelContext?.fetch(descriptor).isEmpty == true,
-//               let context = modelContext,
-//               let zipMetaData = zipMetaData {
-            //                context.insert(zipMetaData)
-            //            }
         }
         
-        for photoURL in photos {
-            let photoMetaData = PhotoMetadata(
+        let photosMetaData = photos.map {
+            PhotoMetadata(
                 connectionId: connectionId,
-                fileName: photoURL.lastPathComponent,
+                fileName: $0.lastPathComponent,
                 downloadDate: Date(),
-                filePath: photoURL
+                filePath: $0
             )
-            
-            try StorageManager.shared.save(photoMetaData)
+        }
+        
+        return (zipMetaData, photosMetaData)
+    }
+
+    func saveFileMetaData(zipFileMetaData: ZipFileMetadata?, photoMetaData: [PhotoMetadata]) {
+        if let zipFileMetaData = zipFileMetaData {
+            modelContext.insert(zipFileMetaData)
+        }
+        for photoMetaData in photoMetaData {
+            modelContext.insert(photoMetaData)
+        }
+        do {
+            try modelContext.save()
+        } catch {
+            print("Error: \(error.localizedDescription)")
         }
     }
     
-//    @DatabaseActor
-//    func fetchZipMetadata(byFilename filename: String) async throws -> [ZipFileMetadata] {
-//        let predicate = Predicate<ZipFileMetadata>(\.fileName == filename)
-//        let results = try await context.fetch(descriptor)
-//        return Task.init {
-//            return results
-//        }
-//    }
-//
-//    private func saveToSwiftData(photoMetadata: PhotoMetadata) async throws {
-//
-//    }
+    public func fetchPhotosLocations(for predicate: Predicate<PhotoMetadata>) throws -> [PhotoMetadata] {
+        fetchAndPrintAllPhotos()
+        let sortDescriptor = SortDescriptor<PhotoMetadata>(\.fileName, order: .forward)
+        
+        let descriptor = FetchDescriptor(predicate: predicate, sortBy: [sortDescriptor])
+        return try self.modelContext.fetch(descriptor)
+    }
+    
+    func fetchAndPrintAllPhotos() {
+        do {
+            // Fetch all records without a predicate
+            let allPhotos = try modelContext.fetch(FetchDescriptor<PhotoMetadata>())
+            
+            let fetchDescriptor = FetchDescriptor<PhotoMetadata>(sortBy: [SortDescriptor(\.fileName)])
+            let photos = try modelContext.fetch(fetchDescriptor)
+            print("Fetched photos: \(photos)")
+            
+            // Print count and details of each photo
+            print("Total photos: \(allPhotos.count)")
+            for photo in allPhotos {
+                print("Photo Metadata:")
+                print("- File Name: \(photo.fileName)")
+                print("- Connection ID: \(photo.connectionId)")
+                print("- Download Date: \(photo.downloadDate)")
+                print("- File Path: \(photo.filePath)")
+                print("---------------------------------")
+            }
+        } catch {
+            print("Error fetching photos: \(error.localizedDescription)")
+        }
+    }
 }
+
+
+// App Manager(start Download)
+
+//  - StartDownload() -> Download Package -> return (temp location, error) - Dow
+//  - Move it the file location -> File package -> create directory -> store downloaded file(success, failure) - File
+//  - Decyryption(location), destination -> Crypt
+//  - unzip (where) - FilePackage -> return the metadata
+//  - app -> Decide to storeMeta ( swiftData/CoreData )
+//  - userId/Backup(zipped - cloud)/Photos(unzipped)

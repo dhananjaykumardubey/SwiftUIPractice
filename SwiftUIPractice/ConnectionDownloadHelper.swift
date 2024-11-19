@@ -8,75 +8,93 @@
 import Foundation
 import AppleArchive
 import System
+import SwiftData
 
-public class ConnectionDownloadHelper {
+public final class ConnectionDownloadHelper {
 
     private var filesToDownload: [FilesToDownload] = []
     private let fileManagerService: FileManagerService = FileManagerService.shared
     private let downloadService: DownloadManager1 = DownloadManager1()
+    private let cryptoService: Encryptor = EncryptionService()
+    private let shouldDecrypt: Bool = false
+    private let modelContainer: ModelContainer
     
-    public init() {
-        downloadService.delegate = self
+    public init(modelContainer: ModelContainer) {
+        self.modelContainer = modelContainer
     }
     
-    public func startDownloading(filesToDownload: [FilesToDownload]) async {
+    public func startDownloading(filesToDownload: [FilesToDownload]) {
         self.filesToDownload = filesToDownload
         let downloadUrls = filesToDownload.compactMap { URL(string: $0.signedURL) }
-        do {
-            try fileManagerService.checkAvailableSpace()
-            try await downloadService.downloadFiles(urls: downloadUrls)
-        } catch {
-            print("Error downloading files: \(error.localizedDescription)")
+        Task {
+            do {
+                try await fileManagerService.checkAvailableSpace()
+                downloadService.delegate = self
+                downloadService.downloadFiles(urls: downloadUrls)
+            } catch {
+                print("Error downloading files: \(error.localizedDescription)")
+            }
         }
     }
     
+    private func decryptDownloadedFile(from fileLocation: URL,
+                                       to destinationPath: URL,
+                                       recipientPrivateKey: SecKey,
+                                       senderPublicKey: SecKey,
+                                       from metaData: CryptoMetadata) throws {
+        try self.cryptoService.decryptFile(fromPath: fileLocation,
+                                           metadata: metaData,
+                                           recipientPrivateKey: recipientPrivateKey,
+                                           senderPublicKey: senderPublicKey,
+                                           outputPath: destinationPath)
+        
+    }
+                          
     
-    // APP -> fileManager(location)
-    // DownloadService -> FileManager
-    // APP -> EncryptionPackage -> FileManager
-    
-    // App -> File, Download, Encryption
-    // Download -> File
-    // Encryption-> File
-    
-    
-    // Write again in the location
-    // APP -> FIleService -> Unzip and Store
-    
-    // DP
-    // downloaded
-    // fileManager - tmp(encrypted)
-    //
-    // EncryptionPackage
-    //
-    
-    private func handleFileDownload(locationUrl: URL, downloadURL: URL) throws -> URL {
-        // locationURL -> EncryptionPackage -> FilesToDownload.encryptedModel
-        // decryptedData
-        // zip/image
-        // write this data
-        // location
-        // clean the decrypted clean
+    private func saveFileMetaData(zipFileMetaData: ZipFileMetadata?, photoMetaData: [PhotoMetadata]) {
+//        if let zipFileMetaData = zipFileMetaData {
+//            modelContext.insert(zipFileMetaData)
+//        }
+//        for photoMetaData in photoMetaData {
+//            modelContext.insert(photoMetaData)
+//        }
+//        do {
+//            try modelContext.save()
+//        } catch {
+//            print("Error: \(error.localizedDescription)")
+//        }
+    }
+
+    private func handleFileDownload(locationUrl: URL, downloadURL: URL) throws -> URL? {
+        print(locationUrl)
         let filePath = FilePath(locationUrl.absoluteString)
-        let savedURL = try fileManagerService.handleDownloadedFile(location: locationUrl, downloadURL: downloadURL, for: "dhan_123", saveBackupZip: true)
-        return savedURL
+        let connectionId = self.filesToDownload.filter { downloadURL == URL(string: $0.signedURL) }.first?.connectionID
+        var outputDecryptedFilePath = locationUrl
+        Task {
+            if shouldDecrypt, let fileName = filePath.lastComponent {
+                print("FIlename = \(fileName)")
+                let outputDecryptedFilePath = await self.fileManagerService.getDocumentsDirectory().appendingPathComponent("\(fileName).zip")
+                // TODO: Handle decryption
+            }
+            let metaData = try await self.fileManagerService.handleDownloadedFile(location: locationUrl, for: connectionId ?? "Generic", saveBackupZip: true)
+            self.saveFileMetaData(zipFileMetaData: metaData?.0, photoMetaData: metaData?.1 ?? [])
+        }
+        return nil
     }
 }
 
 extension ConnectionDownloadHelper: DownloadManagerDelegate1 {
     func downloadManager(_ manager: DownloadManager1, didUpdateProgress progress: Double, for url: URL) {
-        print("Current Progress - \(progress)")
     }
     
     func downloadManager(_ manager: DownloadManager1, didFinishDownloadingTo url: URL, to location: URL) {
             do {
                 let savedURL = try self.handleFileDownload(locationUrl: location, downloadURL: url)
-                print("Downloaded successfully at \(savedURL) for download url: \(url)")
             } catch {
                 print("Error handling downloaded file: \(error.localizedDescription)")
             }
-        
     }
+    
     
     func downloadManager(_ manager: DownloadManager1, didFailWithError error: DownloadError, for url: URL) {
         print("didFailWithError: \(error)")
